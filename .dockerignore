@@ -1,0 +1,28 @@
+# region MODULE_CONTRACT [DOMAIN(7): DevOps; CONCEPT(9): DockerIgnore, BuildOptimization; TECH(8): Docker]
+## @modulecontract
+## @purpose To exclude development artifacts and large files from the Docker build context, reducing image size and preventing accidental inclusion of secrets.
+function _module_contract(): void {}
+# endregion MODULE_CONTRACT
+# GREP_SUMMARY: dockerignore, build optimization, exclusions, node_modules, data, logs
+
+node_modules
+dist
+build
+coverage
+.git
+.gitignore
+*.log
+.env
+.env.local
+.env.production
+data/
+tests/
+plans/
+doxygen_output/
+Doxyfile
+README.md
+metadata.json
+assets/
+.test_counter.json
+vite.config.ts
+tsconfig.json

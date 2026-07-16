@@ -1,0 +1,67 @@
+# region MODULE_CONTRACT [DOMAIN(9): CI/CD; CONCEPT(9): ContinuousDeployment; TECH(9): CloudBuild, CloudRun]
+## @modulecontract
+## @purpose To enable automated deployments from Git pushes — Cloud Build builds the Docker image and deploys to Cloud Run without manual steps.
+## @scope Build trigger: on push to main branch. Steps: docker build → push → deploy to Cloud Run.
+## @input Source code from Git repository.
+## @output Deployed Cloud Run service.
+## @invariants
+## - Only triggers on main branch pushes.
+## - Uses the same Dockerfile as manual deployment.
+## @changes
+## LAST_CHANGE: [v1.0.0 — Initial Cloud Build configuration]
+function _module_contract(): void {}
+# endregion MODULE_CONTRACT
+# GREP_SUMMARY: cloudbuild, CI/CD, automated deployment, Cloud Run, gitops
+# STRUCTURE: ▶ Git push → ⚡ Cloud Build trigger → ○ docker build → ⊕ docker push → ⚡ gcloud run deploy → ⎋ https://${SERVICE}-xxxxx-uc.a.run.app
+
+steps:
+  # Step 1: Build Docker image from Dockerfile
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--platform=linux/amd64'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}'
+      - '.'
+
+  # Step 2: Push image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}'
+
+  # Step 3: Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}'
+      - '--platform'
+      - 'managed'
+      - '--region'
+      - '${_REGION}'
+      - '--port'
+      - '8080'
+      - '--memory'
+      - '512Mi'
+      - '--cpu'
+      - '1'
+      - '--min-instances'
+      - '0'
+      - '--max-instances'
+      - '1'
+      - '--concurrency'
+      - '80'
+      - '--allow-unauthenticated'
+
+images:
+  - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}'
+
+substitutions:
+  _SERVICE_NAME: walet
+  _REGION: us-central1
+
+timeout: 1200s
