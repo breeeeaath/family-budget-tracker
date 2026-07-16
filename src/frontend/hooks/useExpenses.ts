@@ -1,25 +1,25 @@
 // region MODULE_CONTRACT [DOMAIN(9): Budget, ExpenseTracking; CONCEPT(9): ReactHook, StateManagement; TECH(8): React19, TypeScript]
 // ## @modulecontract
-// ## @purpose To provide a unified interface for transaction CRUD, balance, and stats — using localStorage in production (Vercel) and fetch API in development. Auto-detects environment.
-// ## @scope Transaction CRUD, balance, stats, loading state management.
+// ## @purpose To provide transaction CRUD, balance, and stats — uses localStorage exclusively. No fetch, no environment detection, no backend dependency. Instant, offline-capable.
+// ## @scope Transaction CRUD, balance, stats, error display, loading state.
 // ## @input None.
-// ## @output { transactions, balance, stats, isLoading, addTransaction, deleteTransaction, fetchAll }
-// ## @links [USES: storage.ts (production); CALLS_API: /api/transactions (development)]
+// ## @output { transactions, balance, stats, isLoading, error, addTransaction, deleteTransaction, fetchAll }
+// ## @links [USES: storage.ts]
 // ## @invariants
 // ## - transactions ALWAYS returns an array.
-// ## - In production (Vercel), uses localStorage — no network, instant updates.
-// ## - In development, uses Express backend via fetch.
+// ## - All operations are synchronous — no network calls.
+// ## - If localStorage fails, error state is set and displayed to user.
 // ## @rationale
-// ## Q: Why switch storage based on environment?
-// ## A: Vercel serverless doesn't support SQLite/better-sqlite3. localStorage provides full CRUD + persistence without a backend.
+// ## Q: Why remove fetch entirely?
+// ## A: Environment detection was fragile on Vercel builds. localStorage works everywhere, instantly, and persists across sessions. The Express backend remains for local dev via `npm run dev`.
 // ## @changes
-// ## LAST_CHANGE: [v2.1.0 – Added localStorage fallback for Vercel production]
+// ## LAST_CHANGE: [v2.2.0 – Removed all environment detection and fetch logic. Always localStorage. Added error state for user feedback.]
 // ## @modulemap
-// ## FUNC 10[React hook: transactions + balance + stats via localStorage or fetch] => useExpenses
+// ## FUNC 10[React hook: transactions + balance + stats via localStorage only] => useExpenses
 function _module_contract(): void {}
 // endregion MODULE_CONTRACT
-// GREP_SUMMARY: React, hook, useExpenses, localStorage, transactions, balance, stats, CRUD, Vercel
-// STRUCTURE: ▶ useExpenses() → ◇ PROD? ┌storage.ts functions┐ || DEV? ┌fetch to /api/*┐ → ┌useState: transactions, balance, stats, isLoading┐ → addTransaction/deleteTransaction → refresh all → ⎋ {transactions, balance, stats, isLoading, addTransaction, deleteTransaction}
+// GREP_SUMMARY: React, hook, useExpenses, localStorage, transactions, balance, stats, CRUD, error feedback
+// STRUCTURE: ▶ useExpenses() → ⚡ storage.ts functions → ┌useState: transactions, balance, stats, isLoading, error┐ → addTransaction/deleteTransaction → refresh → updateState → ◇ error? → show to user → ⎋ {transactions, balance, stats, isLoading, error, addTransaction, deleteTransaction}
 
 import { useState, useEffect, useCallback } from 'react';
 import {
@@ -32,65 +32,36 @@ import {
     type Stats
 } from '../storage.js';
 
-// BUG_FIX_CONTEXT: Checking import.meta.env.PROD was unreliable in minified Vercel builds.
-// Instead, detect Vercel deployment by hostname — this is a runtime check that always works.
-const IS_PROD: boolean = typeof window !== 'undefined' &&
-    window.location.hostname.includes('vercel.app');
-
 // region FUNC_useExpenses [DOMAIN(9): Budget; CONCEPT(9): CustomHook; TECH(8): React19]
-// ## @purpose Unified hook: localStorage in production, fetch API in development.
-// ## @uses storage.ts (production), fetch (development)
+// ## @purpose Simple localStorage-only hook with visible error feedback.
+// ## @uses storage.ts
 // ## @io [] -> [object]
-// ## @complexity 8
+// ## @complexity 6
 export function useExpenses() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [balance, setBalance] = useState<number>(0);
     const [stats, setStats] = useState<Stats>({ today: 0, yesterday: 0, this_week: 0, this_month: 0 });
     const [isLoading, setIsLoading] = useState<boolean>(false);
-    const prod = IS_PROD;
+    // BUG_FIX_CONTEXT: Users had no feedback when errors occurred. Added error state visible in UI.
+    const [error, setError] = useState<string | null>(null);
 
-    // region BLOCK_refreshData [DOMAIN(8): Budget; CONCEPT(7): Read; TECH(6): Storage|Fetch]
+    // region BLOCK_refreshData [DOMAIN(8): Budget; CONCEPT(7): Read; TECH(6): Storage]
     const refreshData = useCallback(() => {
-        if (prod) {
-            console.log(`[IMP:5][useExpenses][refreshData] Refreshing from localStorage [FLOW]`);
-            try {
-                const txs = getAllTransactions();
-                const bal = calcBalance();
-                const sts = calcStats();
-                setTransactions(txs);
-                setBalance(bal);
-                setStats(sts);
-                console.log(`[IMP:7][useExpenses][refreshData] Loaded: ${txs.length} tx, balance=${bal} [IO]`);
-            } catch (error) {
-                console.error(`[IMP:10][useExpenses][refreshData] localStorage error [FATAL]`, error);
-            }
-        } else {
-            console.log(`[IMP:5][useExpenses][refreshData] Refreshing from API [FLOW]`);
-            Promise.all([
-                fetch('/api/transactions').then(r => r.ok ? r.json() : Promise.reject(r.status)),
-                fetch('/api/balance').then(r => r.ok ? r.json() : Promise.reject(r.status)),
-                fetch('/api/stats').then(r => r.ok ? r.json() : Promise.reject(r.status))
-            ]).then(([txs, bal, sts]) => {
-                setTransactions(txs);
-                setBalance(bal.balance || 0);
-                setStats(sts);
-                console.log(`[IMP:7][useExpenses][refreshData] API: ${txs.length} tx, balance=${bal.balance} [IO]`);
-            }).catch(error => {
-                console.error(`[IMP:10][useExpenses][refreshData] API error, falling back to localStorage [FATAL]`, error);
-                // Fallback to localStorage on API failure
-                try {
-                    const txs = getAllTransactions();
-                    const bal = calcBalance();
-                    const sts = calcStats();
-                    setTransactions(txs);
-                    setBalance(bal);
-                    setStats(sts);
-                } catch (e2) {
-                    // ignore
-                }
-            });
+        setError(null);
+        try {
+            const txs = getAllTransactions();
+            const bal = calcBalance();
+            const sts = calcStats();
+            setTransactions(txs);
+            setBalance(bal);
+            setStats(sts);
+            console.log(`[IMP:7][useExpenses][refreshData] Loaded: ${txs.length} tx, balance=${bal} [IO]`);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[IMP:10][useExpenses][refreshData] Error: ${msg} [FATAL]`);
+            setError(`Ошибка загрузки данных: ${msg}`);
         }
-    }, [prod]);
+    }, []);
     // endregion BLOCK_refreshData
 
     // region BLOCK_useEffect [DOMAIN(7): React; CONCEPT(7): Lifecycle; TECH(7): useEffect]
@@ -99,64 +70,61 @@ export function useExpenses() {
     }, [refreshData]);
     // endregion BLOCK_useEffect
 
-    // region BLOCK_addTransaction [DOMAIN(9): Budget; CONCEPT(9): Create; TECH(7): Storage|Fetch]
+    // region BLOCK_addTransaction [DOMAIN(9): Budget; CONCEPT(9): Create; TECH(7): Storage]
     const addTransaction = useCallback(async (
         type: 'income' | 'expense',
         amount: number,
         description: string,
         category_id?: number | null
     ) => {
-        console.log(`[IMP:5][useExpenses][addTransaction] Adding ${type}: amount=${amount} [FLOW]`);
+        console.log(`[IMP:5][useExpenses][addTransaction] Adding ${type}: amount=${amount} desc='${description}' [FLOW]`);
         setIsLoading(true);
+        setError(null);
         try {
-            if (prod) {
-                createTx(type, amount, description, category_id);
-            } else {
-                const res = await fetch('/api/transactions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type, amount, description, category_id: category_id || null })
-                });
-                if (!res.ok) {
-                    const errBody = await res.json().catch(() => ({}));
-                    throw new Error(errBody.error || `HTTP ${res.status}`);
-                }
-                console.log(`[IMP:7][useExpenses][addTransaction] POST successful [IO]`);
-            }
+            createTx(type, amount, description, category_id);
             refreshData();
-        } catch (error) {
-            console.error(`[IMP:10][useExpenses][addTransaction] Failed [FATAL]`, error);
+            console.log(`[IMP:9][useExpenses][addTransaction] Transaction created successfully [BUSINESS]`);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[IMP:10][useExpenses][addTransaction] Failed: ${msg} [FATAL]`);
+            setError(`Не удалось добавить: ${msg}`);
         } finally {
             setIsLoading(false);
         }
-    }, [prod, refreshData]);
+    }, [refreshData]);
     // endregion BLOCK_addTransaction
 
-    // region BLOCK_deleteTransaction [DOMAIN(8): Budget; CONCEPT(8): Delete; TECH(7): Storage|Fetch]
+    // region BLOCK_deleteTransaction [DOMAIN(8): Budget; CONCEPT(8): Delete; TECH(7): Storage]
     const deleteTransaction = useCallback(async (id: number) => {
         console.log(`[IMP:5][useExpenses][deleteTransaction] Deleting id=${id} [FLOW]`);
+        setError(null);
         try {
-            if (prod) {
-                deleteTx(id);
+            const deleted = deleteTx(id);
+            if (deleted) {
+                refreshData();
+                console.log(`[IMP:9][useExpenses][deleteTransaction] Deleted id=${id} [BUSINESS]`);
             } else {
-                const res = await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                console.log(`[IMP:7][useExpenses][deleteTransaction] DELETE successful id=${id} [IO]`);
+                console.log(`[IMP:7][useExpenses][deleteTransaction] Transaction id=${id} not found [IO]`);
             }
-            refreshData();
-        } catch (error) {
-            console.error(`[IMP:10][useExpenses][deleteTransaction] Failed [FATAL]`, error);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[IMP:10][useExpenses][deleteTransaction] Failed: ${msg} [FATAL]`);
+            setError(`Не удалось удалить: ${msg}`);
         }
-    }, [prod, refreshData]);
+    }, [refreshData]);
     // endregion BLOCK_deleteTransaction
 
-    console.log(`[IMP:6][useExpenses][STATE] ${prod ? 'PRODUCTION(localStorage)' : 'DEV(API)'}: tx=${transactions.length}, balance=${balance} [FLOW]`);
+    // region BLOCK_clearError [DOMAIN(6): UI; CONCEPT(5): Feedback; TECH(4): React]
+    const clearError = useCallback(() => setError(null), []);
+    // endregion BLOCK_clearError
 
     return {
         transactions,
         balance,
         stats,
         isLoading,
+        error,
+        clearError,
         addTransaction,
         deleteTransaction,
         fetchAll: refreshData

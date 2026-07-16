@@ -28,8 +28,8 @@ import { useCategories } from './frontend/hooks/useCategories.js';
 // region COMPONENT_App_Definition [DOMAIN(9): Budget; CONCEPT(9): UI; TECH(9): React19]
 // ## @purpose To render the full budget tracker interface with transaction type selection, category picker, balance display, statistics, and categorized transaction list.
 export default function App() {
-    const { transactions, balance, stats, isLoading, addTransaction, deleteTransaction } = useExpenses();
-    const { categories } = useCategories();
+    const { transactions, balance, stats, isLoading, error, clearError, addTransaction, deleteTransaction } = useExpenses();
+    const { categories, error: catError } = useCategories();
     const [transactionType, setTransactionType] = useState<'income' | 'expense'>('expense');
     const [amount, setAmount] = useState('');
     const [description, setDescription] = useState('');
@@ -39,9 +39,15 @@ export default function App() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!amount || !description) return;
+        // BUG_FIX_CONTEXT: Russian locale uses comma (,) as decimal separator.
+        // parseFloat("100,50") returns 100 (stops at comma). Replace , with . first.
+        const normalizedAmount = parseFloat(amount.replace(',', '.'));
+        if (isNaN(normalizedAmount) || normalizedAmount <= 0) {
+            return;
+        }
         await addTransaction(
             transactionType,
-            parseFloat(amount),
+            normalizedAmount,
             description,
             categoryId ? parseInt(categoryId, 10) : null
         );
@@ -73,6 +79,22 @@ export default function App() {
                         <span className="text-white/60 ml-2 italic text-sm">Трекер</span>
                     </h1>
                 </header>
+
+                {/* Error Display */}
+                {(error || catError) && (
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-start gap-3">
+                        <span className="text-red-400 text-lg flex-shrink-0">⚠️</span>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-red-300 text-sm">{error || catError}</p>
+                        </div>
+                        <button
+                            onClick={clearError}
+                            className="text-red-400/60 hover:text-red-400 flex-shrink-0 p-1"
+                        >
+                            ✕
+                        </button>
+                    </div>
+                )}
 
                 {/* Balance Card */}
                 <div className="bg-gradient-to-br from-[#1A1A1A] to-[#111111] border border-white/10 rounded-2xl p-8 relative overflow-hidden flex flex-col items-center justify-center space-y-2">

@@ -1,21 +1,18 @@
 // region MODULE_CONTRACT [DOMAIN(8): Budget, Categories; CONCEPT(9): ReactHook, StateManagement; TECH(8): React19, TypeScript]
 // ## @modulecontract
-// ## @purpose To provide category CRUD — localStorage in production (Vercel), fetch API in development.
-// ## @scope Category list display, create/update/delete operations.
+// ## @purpose Category CRUD using localStorage only. No fetch, no environment detection.
+// ## @scope Category list display, create/update/delete operations, error feedback.
 // ## @input None.
-// ## @output { categories, isLoading, createCategory, updateCategory, deleteCategory }
-// ## @links [USES: storage.ts (production); CALLS_API: /api/categories (development)]
-// ## @invariants
-// ## - categories ALWAYS returns an array.
-// ## - In production, uses localStorage.
+// ## @output { categories, isLoading, error, createCategory, updateCategory, deleteCategory }
+// ## @links [USES: storage.ts]
 // ## @changes
-// ## LAST_CHANGE: [v2.1.0 – Added localStorage fallback for Vercel production]
+// ## LAST_CHANGE: [v2.2.0 – Removed fetch. Always localStorage. Added error state.]
 // ## @modulemap
-// ## FUNC 8[React hook: categories via localStorage or fetch] => useCategories
+// ## FUNC 8[React hook: categories via localStorage only] => useCategories
 function _module_contract(): void {}
 // endregion MODULE_CONTRACT
-// GREP_SUMMARY: React, hook, useCategories, localStorage, categories, CRUD, Vercel
-// STRUCTURE: ▶ useCategories() → ◇ PROD? ┌storage.ts functions┐ || DEV? ┌fetch to /api/categories┐ → ┌useState: categories, isLoading┐ → CRUD operations → refresh → ⎋ {categories, isLoading, createCategory, updateCategory, deleteCategory}
+// GREP_SUMMARY: React, hook, useCategories, localStorage, categories, CRUD, error feedback
+// STRUCTURE: ▶ useCategories() → ⚡ storage.ts functions → ┌useState: categories, isLoading, error┐ → CRUD → refresh → updateState → ⎋
 
 import { useState, useEffect, useCallback } from 'react';
 import {
@@ -26,41 +23,23 @@ import {
     type Category
 } from '../storage.js';
 
-// BUG_FIX_CONTEXT: Hostname-based detection is more reliable than import.meta.env in minified builds.
-const IS_PROD: boolean = typeof window !== 'undefined' &&
-    window.location.hostname.includes('vercel.app');
-
-// region FUNC_useCategories [DOMAIN(8): Budget; CONCEPT(9): CustomHook; TECH(8): React19]
 export function useCategories() {
     const [categories, setCategories] = useState<Category[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(false);
-    const prod = IS_PROD;
+    const [error, setError] = useState<string | null>(null);
 
-    const fetchCategories = useCallback(async () => {
-        console.log(`[IMP:5][useCategories][fetchCategories] Fetching categories [FLOW]`);
+    const fetchCategories = useCallback(() => {
+        setError(null);
         try {
-            if (prod) {
-                const cats = getAllCategories();
-                setCategories(cats);
-                console.log(`[IMP:7][useCategories][fetchCategories] localStorage: ${cats.length} categories [IO]`);
-            } else {
-                const res = await fetch('/api/categories');
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data: Category[] = await res.json();
-                setCategories(data);
-                console.log(`[IMP:7][useCategories][fetchCategories] API: ${data.length} categories [IO]`);
-            }
-        } catch (error) {
-            console.error(`[IMP:10][useCategories][fetchCategories] Failed [FATAL]`, error);
-            // Fallback to localStorage on API failure
-            try {
-                const cats = getAllCategories();
-                setCategories(cats);
-            } catch (e2) {
-                // ignore
-            }
+            const cats = getAllCategories();
+            setCategories(cats);
+            console.log(`[IMP:7][useCategories][fetchCategories] Loaded ${cats.length} categories [IO]`);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[IMP:10][useCategories][fetchCategories] Error: ${msg} [FATAL]`);
+            setError(msg);
         }
-    }, [prod]);
+    }, []);
 
     useEffect(() => {
         fetchCategories();
@@ -68,70 +47,54 @@ export function useCategories() {
 
     const createCategory = useCallback(async (name: string, icon?: string) => {
         setIsLoading(true);
+        setError(null);
         try {
-            if (prod) {
-                createCat(name, icon);
-            } else {
-                const res = await fetch('/api/categories', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, icon: icon || '📦' })
-                });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            }
-            await fetchCategories();
-        } catch (error) {
-            console.error(`[IMP:10][useCategories][createCategory] Failed [FATAL]`, error);
+            createCat(name, icon);
+            fetchCategories();
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setError(msg);
         } finally {
             setIsLoading(false);
         }
-    }, [prod, fetchCategories]);
+    }, [fetchCategories]);
 
     const updateCategory = useCallback(async (id: number, name: string) => {
         setIsLoading(true);
+        setError(null);
         try {
-            if (prod) {
-                updateCat(id, name);
-            } else {
-                const res = await fetch(`/api/categories/${id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name })
-                });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            }
-            await fetchCategories();
-        } catch (error) {
-            console.error(`[IMP:10][useCategories][updateCategory] Failed [FATAL]`, error);
+            updateCat(id, name);
+            fetchCategories();
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setError(msg);
         } finally {
             setIsLoading(false);
         }
-    }, [prod, fetchCategories]);
+    }, [fetchCategories]);
 
     const deleteCategory = useCallback(async (id: number) => {
         setIsLoading(true);
+        setError(null);
         try {
-            if (prod) {
-                deleteCat(id);
-            } else {
-                const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            }
-            await fetchCategories();
-        } catch (error) {
-            console.error(`[IMP:10][useCategories][deleteCategory] Failed [FATAL]`, error);
+            deleteCat(id);
+            fetchCategories();
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setError(msg);
         } finally {
             setIsLoading(false);
         }
-    }, [prod, fetchCategories]);
+    }, [fetchCategories]);
 
     return {
         categories,
         isLoading,
+        error,
         fetchCategories,
         createCategory,
         updateCategory,
         deleteCategory
     };
 }
-// endregion FUNC_useCategories
+// endregion
