@@ -169,10 +169,19 @@ export default function App() {
                         <div className="space-y-1.5">
                             <label className="text-[10px] uppercase text-white/30 ml-1">Сумма (₽)</label>
                             <input
-                                type="number"
+                                type="text"
                                 placeholder="0.00"
                                 value={amount}
-                                onChange={(e) => setAmount(e.target.value)}
+                                onChange={(e) => {
+                                    // BUG_FIX_CONTEXT: On mobile browsers, type="number" can prevent
+                                    // e.target.value from being captured before keyboard dismissal.
+                                    // Using type="text" + inputMode="decimal" + manual validation
+                                    // ensures the value is always readable.
+                                    const val = e.target.value;
+                                    if (val === '' || /^\d*[.,]?\d*$/.test(val)) {
+                                        setAmount(val);
+                                    }
+                                }}
                                 className={`w-full bg-white/5 border rounded-xl px-4 py-3 text-2xl font-light focus:outline-none transition-colors placeholder:text-white/20 text-white ${
                                     transactionType === 'expense'
                                         ? 'border-white/10 focus:border-red-500/50'
@@ -180,8 +189,6 @@ export default function App() {
                                 }`}
                                 required
                                 inputMode="decimal"
-                                min="0"
-                                step="0.01"
                             />
                         </div>
 
