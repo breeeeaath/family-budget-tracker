@@ -1,80 +1,55 @@
-# Test Guide for QA Agent
+# QA Test Guide — Family Budget Tracker v2.0
 
-## Project: Family Budget Tracker (Refactored)
+## Test Files Summary
 
-### Overview
-This test suite verifies the backend layer isolation (Database → Service → Controller) of the Family Budget Tracker. Tests are written in TypeScript using **vitest** and **supertest**.
+| Test File | Type | Tests | Description |
+|-----------|------|-------|-------------|
+| `test_expense_service.ts` | Unit | 9 | ExpenseService CRUD + validation with new `type` parameter |
+| `test_expense_controller.ts` | API | 9 | TransactionController: /api/transactions, /api/balance, /api/stats |
+| `test_category_service.ts` | Unit | 6 | CategoryService: CRUD + soft-delete when transactions exist |
+| `test_stats_service.ts` | Unit | 5 | StatsService: period stats, monthly rollover, balance |
 
-### Test Files
+**Total: 29 tests across 4 files.**
 
-| File | Type | What it tests |
-|------|------|---------------|
-| `tests/conftest.ts` | Infrastructure | Anti-Loop Protocol with `.test_counter.json` attempt tracking |
-| `tests/test_expense_service.ts` | Unit | `ExpenseService` CRUD operations, validation, LDD telemetry |
-| `tests/test_expense_controller.ts` | API | Express route handlers via supertest (headless) |
-
-### How to Run
-
+## Run Command
 ```bash
-# From project root
 npx vitest run
-
-# With verbose output
-npx vitest run --reporter=verbose
-
-# Watch mode (for development)
-npx vitest
 ```
 
-### LDD Telemetry Markers
+## LDD Telemetry Markers
 
-The `ExpenseService` and controller modules use structured logging with `[IMP:N]` importance levels:
+| IMP Level | Category | Description |
+|-----------|----------|-------------|
+| IMP:7 | I/O & Boundary | DB access, API calls, file reads |
+| IMP:9 | Business Logic | Hypothesis testing, balance calculation, category create/delete |
+| IMP:10 | Critical Error | Validation failures, fatal conditions |
 
-| Marker | Meaning | Expected in tests |
-|--------|---------|-------------------|
-| `[IMP:7]` | I/O operation (DB access, API call) | `service.getAll`, `service.create`, `service.delete`, `service.getTotal` |
-| `[IMP:9]` | Business logic decision (validation pass/fail) | `service.create` validation checks |
-| `[IMP:10]` | Critical error | Should NOT appear if tests pass |
+## Expected IMP:9 Log Lines (for test validity)
 
-### Test Expectations
+### test_expense_service.ts
+- `[IMP:9][ExpenseService][create] Created transaction id=X: type=expense, amount=..., description='...'`
+- `[IMP:9][ExpenseService][delete] Deleted transaction id=X`
+- `[IMP:9][ExpenseService][getBalance] Balance for workspace 'family_1': ...`
 
-#### Service Tests (`test_expense_service.ts`)
-- **7 tests + 1 integration test** = 8 total
-- Each test creates its own `:memory:` database
-- LDD trace `[IMP:7-10]` is printed to console after each test (both stdout and stderr are captured)
-- Validation tests expect `Error` with message starting with `'Validation failed'`
+### test_category_service.ts
+- `[IMP:9][CategoryService][create] Created category id=X: name='...'`
+- `[IMP:9][CategoryService][delete] Deleting category id=X, name='...'`
 
-#### Controller Tests (`test_expense_controller.ts`)
-- **6 tests** covering GET, POST, DELETE, and validation error paths
-- Uses `supertest` — no real server needed
-- Routes mounted at `/api` prefix
+### test_stats_service.ts
+- `[IMP:9][StatsService][getStats] Stats for workspace 'family_1': today=..., yesterday=...`
+- `[IMP:9][StatsService][rolloverMonth] Rollover for YYYY-MM: opening_balance=...`
 
-### Anti-Loop Protocol
+## Anti-Loop Protocol
+- 0 attempts = Clean (reset)
+- 1-2 = Standard checklist
+- 3 = External help suggested
+- 4 = Looping risk warning
+- 5+ = CRITICAL — operator intervention needed
 
-The `conftest.ts` implements an attempt counter stored in `.test_counter.json`:
-
-- **0 attempts**: Clean run, no checklist
-- **1-2 attempts**: Standard checklist printed
-- **3 attempts**: External help suggestion (MCP tavily / Context 7)
-- **4 attempts**: Looping risk warning
-- **5+ attempts**: CRITICAL — agent looping, operator needed
-
-### Expected `[IMP:9]` Log Lines (Required for Test Validity)
-
-```
-[IMP:9][ExpenseService][create] Validation passed for amount=..., description='...'
-[IMP:9][ExpenseService][create] Expense created successfully: id=..., amount=...
-[IMP:9][ExpenseService][delete] Expense id=... deleted successfully
-[IMP:9][createRouter][POST] Created expense id=..., returning 201
-```
-
-If these lines are absent in the LDD trace output, the test may be passing without proper business logic verification.
-
-### QA Verification Checklist
-
-- [ ] Все 15 тестов пройдены (9 service + 6 controller)
-- [ ] LDD `[IMP:7-10]` trace выводится в консоль для service-тестов (включая stderr для validation-ошибок)
-- [ ] Нет `[IMP:10]` critical errors в трейсах
-- [ ] `.test_counter.json` обновляется: сбрасывается в 0 при успехе, инкрементируется при падениях
-- [ ] `updateTestCounter` вызывается в `afterAll` каждого тестового файла
-- [ ] API-ответы соответствуют ожидаемой структуре и статус-кодам
+## QA Verification Checklist
+- [ ] All 29 tests pass (100% PASS)
+- [ ] LDD IMP:9 markers present in test output
+- [ ] No unexpected console.error calls (except deliberate validation error tests)
+- [ ] Test counter resets to 0 after green run
+- [ ] All test files have GREP_SUMMARY and STRUCTURE lines
+- [ ] New services (CategoryService, StatsService) covered by dedicated test files

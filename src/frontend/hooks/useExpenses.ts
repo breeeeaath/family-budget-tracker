@@ -1,124 +1,179 @@
-// region MODULE_CONTRACT [DOMAIN(8): Budget, ExpenseTracking; CONCEPT(9): ReactHook, StateManagement, Fetch; TECH(8): React19, TypeScript]
+// region MODULE_CONTRACT [DOMAIN(9): Budget, ExpenseTracking; CONCEPT(9): ReactHook, StateManagement, Fetch; TECH(8): React19, TypeScript]
 // ## @modulecontract
-// ## @purpose To encapsulate all HTTP communication with the expense API in a single reusable React hook, removing fetch-logic from UI components and providing a clean interface for CRUD operations.
-// ## @scope State management for expenses list and loading indicator, API fetch calls for GET/POST/DELETE.
-// ## @input None (uses relative /api/expenses endpoint).
-// ## @output An object with expenses array, isLoading boolean, and fetchExpenses/addExpense/deleteExpense callbacks.
-// ## @links [USES_API(8): fetch/browser; CALLS_API: expense_controller_ts /api/expenses]
+// ## @purpose To encapsulate all HTTP communication with the transaction/balance/stats API in a single reusable React hook, providing a clean interface for CRUD operations, balance display, and period statistics.
+// ## @scope State management for transactions, balance, stats, and loading indicator. API fetch calls for GET/POST/DELETE /api/transactions, GET /api/balance, GET /api/stats.
+// ## @input None (uses relative /api/ endpoints).
+// ## @output Object with transactions[], balance, stats, isLoading, and CRUD callbacks.
+// ## @links [USES_API(8): fetch/browser; CALLS_API: expense_controller_ts /api/transactions, /api/balance, /api/stats]
 // ## @invariants
-// ## - expenses ALWAYS returns an array (empty array on initial render).
-// ## - isLoading starts as false, becomes true during addExpense, resets to false after.
-// ## - After addExpense and deleteExpense, fetchExpenses is called automatically to refresh the list.
+// ## - transactions ALWAYS returns an array.
+// ## - balance is a number, default 0.
+// ## - stats is an object {today, yesterday, this_week, this_month}, all default 0.
+// ## - After any mutation, transactions, balance, and stats are re-fetched.
 // ## @rationale
-// ## Q: Why a custom hook instead of inline fetch in App.tsx?
-// ## A: Separation of concerns — the hook manages data fetching and state, the component manages rendering. This also enables future caching, error boundaries, and testing of fetch logic independently.
+// ## Q: Why fetch balance and stats together with transactions?
+// ## A: All three are derived from the same data source. Fetching them together ensures UI consistency — balance always matches the displayed transaction list.
 // ## @changes
-// ## LAST_CHANGE: [v1.0.0 – Initial creation of useExpenses hook]
+// ## LAST_CHANGE: [v2.0.0 – Added type, category_id, category_name, balance, stats. Endpoints changed to /api/transactions.]
 // ## @modulemap
-// ## FUNC 9[React hook for expense CRUD with fetch] => useExpenses
+// ## FUNC 10[React hook for transaction CRUD + balance + stats] => useExpenses
 // ## @usecases
-// ## - [useExpenses]: App.tsx → useExpenses() → { expenses, isLoading, fetchExpenses, addExpense, deleteExpense }
+// ## - [useExpenses]: App.tsx → useExpenses() → { transactions, balance, stats, isLoading, addTransaction, deleteTransaction }
 function _module_contract(): void {}
 // endregion MODULE_CONTRACT
-// GREP_SUMMARY: React, hook, useExpenses, fetch, expenses, CRUD, useState, useEffect, browser API
-// STRUCTURE: ▶ useExpenses() → ┌useState expenses┐ + ┌useState isLoading┐ → ○ fetchExpenses: GET /api/expenses → setExpenses → ◇ addExpense: POST (amount,desc) → setIsLoading T → RE-fetch → setIsLoading F → ◇ deleteExpense: DELETE /:id → re-fetch → ⎋ {expenses, isLoading, fetchExpenses, addExpense, deleteExpense}
+// GREP_SUMMARY: React, hook, useExpenses, fetch, transactions, balance, stats, CRUD, income, expense, useState, useEffect, browser API
+// STRUCTURE: ▶ useExpenses() → ┌useState transactions, balance, stats┐ → ○ fetchData: ┌GET /transactions┐ ⊕ ┌GET /balance┐ ⊕ ┌GET /stats┐ → ◇ addTransaction: POST /api/transactions (type, amount, desc, category_id) → re-fetchAll → ◇ deleteTransaction: DELETE /:id → re-fetchAll → ⎋ {transactions, balance, stats, isLoading, addTransaction, deleteTransaction}
 
 import { useState, useEffect, useCallback } from 'react';
 
-// region TYPES [DOMAIN(8): Budget; CONCEPT(7): DataModel; TECH(6): TypeScript]
-export interface Expense {
+// region TYPES [DOMAIN(9): Budget; CONCEPT(8): DataModel; TECH(6): TypeScript]
+export interface Transaction {
     id: number;
+    type: 'income' | 'expense';
     amount: number;
     description: string;
+    category_id: number | null;
+    category_name: string | null;
+    category_icon: string | null;
     workspace_id: string;
     date: string;
 }
+
+export interface Stats {
+    today: number;
+    yesterday: number;
+    this_week: number;
+    this_month: number;
+}
 // endregion TYPES
 
-// region FUNC_useExpenses [DOMAIN(8): Budget; CONCEPT(9): CustomHook; TECH(8): React19]
-// ## @purpose To provide UI components with a simple, consistent interface for displaying and manipulating expense data without any direct knowledge of HTTP or API structure.
+// region FUNC_useExpenses [DOMAIN(9): Budget; CONCEPT(9): CustomHook; TECH(8): React19]
+// ## @purpose To provide UI components with a unified interface for transaction data, current balance, and period statistics without direct HTTP knowledge.
 // ## @uses React useState, useEffect, useCallback; browser fetch API
 // ## @io [] -> [object]
-// ## @complexity 7
+// ## @complexity 8
 export function useExpenses() {
-    const [expenses, setExpenses] = useState<Expense[]>([]);
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [balance, setBalance] = useState<number>(0);
+    const [stats, setStats] = useState<Stats>({ today: 0, yesterday: 0, this_week: 0, this_month: 0 });
     const [isLoading, setIsLoading] = useState<boolean>(false);
 
-    // region BLOCK_fetchExpenses [DOMAIN(8): Budget; CONCEPT(7): Read; TECH(7): fetch]
-    // ## @purpose To retrieve the latest expense list from the server and update local state.
-    const fetchExpenses = useCallback(async () => {
-        console.log(`[IMP:5][useExpenses][fetchExpenses] Fetching expenses [FLOW]`);
+    // region BLOCK_fetchTransactions [DOMAIN(8): Budget; CONCEPT(7): Read; TECH(7): fetch]
+    // ## @purpose Fetch transactions list from server.
+    const fetchTransactions = useCallback(async () => {
+        console.log(`[IMP:5][useExpenses][fetchTransactions] Fetching transactions [FLOW]`);
         try {
-            const res = await fetch('/api/expenses');
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
-            }
-            const data: Expense[] = await res.json();
-            setExpenses(data);
-            console.log(`[IMP:7][useExpenses][fetchExpenses] Received ${data.length} expenses [IO]`);
+            const res = await fetch('/api/transactions');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data: Transaction[] = await res.json();
+            setTransactions(data);
+            console.log(`[IMP:7][useExpenses][fetchTransactions] Received ${data.length} transactions [IO]`);
         } catch (error) {
-            console.error(`[IMP:10][useExpenses][fetchExpenses] CRITICAL: Failed to fetch expenses [FATAL]`, error);
+            console.error(`[IMP:10][useExpenses][fetchTransactions] CRITICAL: Failed to fetch transactions [FATAL]`, error);
         }
     }, []);
-    // endregion BLOCK_fetchExpenses
+    // endregion BLOCK_fetchTransactions
+
+    // region BLOCK_fetchBalance [DOMAIN(8): Budget; CONCEPT(7): Read; TECH(7): fetch]
+    // ## @purpose Fetch current balance from server.
+    const fetchBalance = useCallback(async () => {
+        console.log(`[IMP:5][useExpenses][fetchBalance] Fetching balance [FLOW]`);
+        try {
+            const res = await fetch('/api/balance');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            setBalance(data.balance || 0);
+            console.log(`[IMP:7][useExpenses][fetchBalance] Balance: ${data.balance} [IO]`);
+        } catch (error) {
+            console.error(`[IMP:10][useExpenses][fetchBalance] CRITICAL: Failed to fetch balance [FATAL]`, error);
+        }
+    }, []);
+    // endregion BLOCK_fetchBalance
+
+    // region BLOCK_fetchStats [DOMAIN(8): Budget; CONCEPT(7): Read; TECH(7): fetch]
+    // ## @purpose Fetch period statistics from server.
+    const fetchStats = useCallback(async () => {
+        console.log(`[IMP:5][useExpenses][fetchStats] Fetching stats [FLOW]`);
+        try {
+            const res = await fetch('/api/stats');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data: Stats = await res.json();
+            setStats(data);
+            console.log(`[IMP:7][useExpenses][fetchStats] Stats: today=${data.today}, month=${data.this_month} [IO]`);
+        } catch (error) {
+            console.error(`[IMP:10][useExpenses][fetchStats] CRITICAL: Failed to fetch stats [FATAL]`, error);
+        }
+    }, []);
+    // endregion BLOCK_fetchStats
+
+    // region BLOCK_fetchAll [DOMAIN(7): Budget; CONCEPT(7): Aggregation; TECH(7): fetch]
+    // ## @purpose Fetch all data (transactions, balance, stats) in parallel.
+    const fetchAll = useCallback(async () => {
+        await Promise.all([fetchTransactions(), fetchBalance(), fetchStats()]);
+    }, [fetchTransactions, fetchBalance, fetchStats]);
+    // endregion BLOCK_fetchAll
 
     // region BLOCK_useEffect [DOMAIN(7): React; CONCEPT(7): Lifecycle; TECH(7): useEffect]
-    // ## @purpose To trigger initial data load when the component mounts.
     useEffect(() => {
-        fetchExpenses();
-    }, [fetchExpenses]);
+        fetchAll();
+    }, [fetchAll]);
     // endregion BLOCK_useEffect
 
-    // region BLOCK_addExpense [DOMAIN(9): Budget; CONCEPT(9): Create; TECH(7): fetch]
-    // ## @purpose To send a new expense to the server, manage loading state, and refresh the list upon completion.
-    const addExpense = useCallback(async (amount: number, description: string) => {
-        console.log(`[IMP:5][useExpenses][addExpense] Adding expense: amount=${amount}, description='${description}' [FLOW]`);
+    // region BLOCK_addTransaction [DOMAIN(9): Budget; CONCEPT(9): Create; TECH(7): fetch]
+    // ## @purpose Send new transaction to server, manage loading state, refresh all data.
+    const addTransaction = useCallback(async (
+        type: 'income' | 'expense',
+        amount: number,
+        description: string,
+        category_id?: number | null
+    ) => {
+        console.log(`[IMP:5][useExpenses][addTransaction] Adding ${type}: amount=${amount}, description='${description}' [FLOW]`);
         setIsLoading(true);
         try {
-            const res = await fetch('/api/expenses', {
+            const res = await fetch('/api/transactions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ amount, description })
+                body: JSON.stringify({ type, amount, description, category_id: category_id || null })
             });
             if (!res.ok) {
                 const errBody = await res.json().catch(() => ({}));
                 throw new Error(errBody.error || `HTTP ${res.status}`);
             }
-            console.log(`[IMP:7][useExpenses][addExpense] POST successful [IO]`);
-            await fetchExpenses();
+            console.log(`[IMP:7][useExpenses][addTransaction] POST successful [IO]`);
+            await fetchAll();
         } catch (error) {
-            console.error(`[IMP:10][useExpenses][addExpense] CRITICAL: Failed to add expense [FATAL]`, error);
+            console.error(`[IMP:10][useExpenses][addTransaction] CRITICAL: Failed to add transaction [FATAL]`, error);
         } finally {
             setIsLoading(false);
         }
-    }, [fetchExpenses]);
-    // endregion BLOCK_addExpense
+    }, [fetchAll]);
+    // endregion BLOCK_addTransaction
 
-    // region BLOCK_deleteExpense [DOMAIN(8): Budget; CONCEPT(8): Delete; TECH(7): fetch]
-    // ## @purpose To remove an expense by id and refresh the display list.
-    const deleteExpense = useCallback(async (id: number) => {
-        console.log(`[IMP:5][useExpenses][deleteExpense] Deleting expense id=${id} [FLOW]`);
+    // region BLOCK_deleteTransaction [DOMAIN(8): Budget; CONCEPT(8): Delete; TECH(7): fetch]
+    // ## @purpose Remove transaction by id and refresh all data.
+    const deleteTransaction = useCallback(async (id: number) => {
+        console.log(`[IMP:5][useExpenses][deleteTransaction] Deleting transaction id=${id} [FLOW]`);
         try {
-            const res = await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
-            }
-            console.log(`[IMP:7][useExpenses][deleteExpense] DELETE successful id=${id} [IO]`);
-            await fetchExpenses();
+            const res = await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            console.log(`[IMP:7][useExpenses][deleteTransaction] DELETE successful id=${id} [IO]`);
+            await fetchAll();
         } catch (error) {
-            console.error(`[IMP:10][useExpenses][deleteExpense] CRITICAL: Failed to delete expense ${id} [FATAL]`, error);
+            console.error(`[IMP:10][useExpenses][deleteTransaction] CRITICAL: Failed to delete transaction ${id} [FATAL]`, error);
         }
-    }, [fetchExpenses]);
-    // endregion BLOCK_deleteExpense
+    }, [fetchAll]);
+    // endregion BLOCK_deleteTransaction
 
-    console.log(`[IMP:6][useExpenses][STATE] Current expenses count: ${expenses.length}, isLoading: ${isLoading} [FLOW]`);
+    console.log(`[IMP:6][useExpenses][STATE] transactions=${transactions.length}, balance=${balance}, isLoading=${isLoading} [FLOW]`);
 
     return {
-        expenses,
+        transactions,
+        balance,
+        stats,
         isLoading,
-        fetchExpenses,
-        addExpense,
-        deleteExpense
+        addTransaction,
+        deleteTransaction,
+        fetchAll
     };
 }
 // endregion FUNC_useExpenses

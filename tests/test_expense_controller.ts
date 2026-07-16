@@ -1,60 +1,59 @@
 // region MODULE_CONTRACT [DOMAIN(8): Budget; CONCEPT(9): APITesting, Headless; TECH(9): vitest, supertest, Express]
 // ## @modulecontract
-// ## @purpose To verify Express route handlers for the expense API using supertest without starting a real HTTP server, ensuring correct HTTP status codes and response bodies.
-// ## @scope Headless tests for GET /api/expenses, POST /api/expenses, DELETE /api/expenses/:id with valid and invalid inputs.
+// ## @purpose To verify Express route handlers for transaction/balance/stats API using supertest without starting a real HTTP server.
+// ## @scope Headless tests for GET/POST/DELETE /api/transactions, GET /api/balance, GET /api/stats with valid and invalid inputs.
 // ## @input None (creates fresh :memory: database and Express app per test).
 // ## @output Test results with HTTP status and body assertions.
-// ## @links [USES_API(9): supertest; CALLS_CLASS: ExpenseService, createRouter; USES: conftest.ts/AntiLoop]
+// ## @links [USES_API(9): supertest; CALLS_CLASS: ExpenseService, StatsService; USES: conftest.ts/AntiLoop]
 // ## @invariants
 // ## - Every test creates its own Express app with fresh DB.
 // ## - Tests verify both success (200/201) and error (400/500) paths.
 // ## @changes
-// ## LAST_CHANGE: [v1.0.0 – Initial creation of controller API tests]
+// ## LAST_CHANGE: [v2.0.0 – Updated for /api/transactions, GET /balance, GET /stats. New createRouter(service, statsService) signature.]
 // ## @modulemap
-// ## FUNC 9[Test: GET returns 200 with array] => test_get_expenses
-// ## FUNC 9[Test: POST creates and returns 201] => test_create_expense
-// ## FUNC 8[Test: POST with invalid data returns 400] => test_create_invalid
-// ## FUNC 8[Test: DELETE returns 200 with success] => test_delete_expense
+// ## FUNC 9[Test: GET /transactions returns 200] => test_get_transactions
+// ## FUNC 9[Test: POST /transactions returns 201] => test_create_transaction
+// ## FUNC 8[Test: POST /transactions invalid returns 400] => test_create_invalid
+// ## FUNC 8[Test: DELETE /transactions returns 200] => test_delete_transaction
+// ## FUNC 8[Test: GET /balance returns 200] => test_get_balance
+// ## FUNC 8[Test: GET /stats returns 200] => test_get_stats
 function _module_contract(): void {}
 // endregion MODULE_CONTRACT
-// GREP_SUMMARY: tests, API, supertest, controller, GET, POST, DELETE, HTTP status, Express, headless
-// STRUCTURE: ▶ ┌createDb(':memory:')┐ → ┌ExpenseService(db)┐ → ┌createRouter(service)┐ → ┌Express app + /api mount┐ → ○ supertest(app) → ◇ GET 200 ○ POST 201 ○ POST 400 ○ DELETE 200 → ⎋ assert status + body
+// GREP_SUMMARY: tests, API, supertest, controller, transactions, balance, stats, GET, POST, DELETE, HTTP status, Express, headless
+// STRUCTURE: ▶ ┌createDb(':memory:')┐ → ┌ExpenseService(db) + StatsService(db)┐ → ┌createRouter(expService, statsService)┐ → ┌Express app + /api mount┐ → ○ supertest(app) → ◇ GET /transactions 200 ○ POST /transactions 201 ○ POST invalid 400 ○ DELETE 200 ○ GET /balance 200 ○ GET /stats 200 → ⎋ assert
 
-// BUG_FIX_CONTEXT: QA-аудит: Anti-Loop Protocol не подключён. updateTestCounter импортирован, но не вызывался.
-// Добавлен afterAll с вызовом updateTestCounter для активации счётчика попыток.
 import { describe, it, expect, afterAll } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { createDb } from '../src/backend/db.js';
 import { ExpenseService } from '../src/backend/expense_service.js';
+import { StatsService } from '../src/backend/stats_service.js';
 import { createRouter } from '../src/backend/expense_controller.js';
 import { updateTestCounter } from './conftest.js';
 
 // region HELPER_createTestApp [DOMAIN(7): Testing; CONCEPT(8): Fixture; TECH(8): Express]
-// ## @purpose To create a fully-wired Express application for each test, using an isolated :memory: database.
+// ## @purpose To create a fully-wired Express application with isolated :memory: DB, both services, and router.
 function createTestApp() {
     const db = createDb(':memory:');
-    const service = new ExpenseService(db, 'family_1');
-    const router = createRouter(service);
+    const expenseService = new ExpenseService(db, 'family_1');
+    const statsService = new StatsService(db, 'family_1');
+    const router = createRouter(expenseService, statsService);
     const app = express();
     app.use(express.json());
     app.use('/api', router);
-    return { app, db, service };
+    return { app, db, expenseService, statsService };
 }
 // endregion HELPER_createTestApp
 
-describe('ExpenseController API Tests', () => {
-    // BUG_FIX_CONTEXT: QA-аудит: добавлен afterAll с вызовом updateTestCounter для активации Anti-Loop Protocol.
-    // BUG_FIX_CONTEXT v2: expect.getState() в afterAll ненадёжен в vitest. Безусловный reset (true):
-    // счётчик сбрасывается в 0 после каждого успешного выполнения afterAll.
+describe('TransactionController API Tests', () => {
     afterAll(() => {
         updateTestCounter(true);
     });
 
     // region TEST_GET_empty [DOMAIN(7): Budget; CONCEPT(7): Read; TECH(7): supertest]
-    it('GET /api/expenses should return 200 with empty array', async () => {
+    it('GET /api/transactions should return 200 with empty array', async () => {
         const { app } = createTestApp();
-        const res = await request(app).get('/api/expenses');
+        const res = await request(app).get('/api/transactions');
         expect(res.status).toBe(200);
         expect(Array.isArray(res.body)).toBe(true);
         expect(res.body.length).toBe(0);
@@ -62,86 +61,131 @@ describe('ExpenseController API Tests', () => {
     // endregion TEST_GET_empty
 
     // region TEST_POST_create [DOMAIN(8): Budget; CONCEPT(9): Create; TECH(8): supertest]
-    it('POST /api/expenses should return 201 with created expense', async () => {
+    it('POST /api/transactions should return 201 with created transaction', async () => {
         const { app } = createTestApp();
         const res = await request(app)
-            .post('/api/expenses')
-            .send({ amount: 500.00, description: 'Тестовый расход' });
+            .post('/api/transactions')
+            .send({ type: 'expense', amount: 500.00, description: 'Тестовый расход' });
         expect(res.status).toBe(201);
         expect(res.body).toHaveProperty('id');
+        expect(res.body.type).toBe('expense');
         expect(res.body.amount).toBe(500.00);
         expect(res.body.description).toBe('Тестовый расход');
         expect(res.body.workspace_id).toBe('family_1');
     });
     // endregion TEST_POST_create
 
+    // region TEST_POST_income [DOMAIN(8): Budget; CONCEPT(8): Create; TECH(8): supertest]
+    it('POST /api/transactions should create income transaction', async () => {
+        const { app } = createTestApp();
+        const res = await request(app)
+            .post('/api/transactions')
+            .send({ type: 'income', amount: 1000.00, description: 'Зарплата' });
+        expect(res.status).toBe(201);
+        expect(res.body.type).toBe('income');
+        expect(res.body.amount).toBe(1000.00);
+    });
+    // endregion TEST_POST_income
+
     // region TEST_POST_validation [DOMAIN(9): Budget; CONCEPT(9): Validation; TECH(8): supertest]
-    it('POST /api/expenses with invalid data should return 400', async () => {
+    it('POST /api/transactions with invalid data should return 400', async () => {
         const { app } = createTestApp();
 
-        // Missing amount
+        // Missing type
         const res1 = await request(app)
-            .post('/api/expenses')
-            .send({ description: 'Ошибка' });
+            .post('/api/transactions')
+            .send({ amount: 100, description: 'Ошибка' });
         expect(res1.status).toBe(400);
         expect(res1.body).toHaveProperty('error');
 
-        // Negative amount
+        // Invalid type
         const res2 = await request(app)
-            .post('/api/expenses')
-            .send({ amount: -100, description: 'Отрицательно' });
+            .post('/api/transactions')
+            .send({ type: 'invalid', amount: 100, description: 'Ошибка' });
         expect(res2.status).toBe(400);
-        expect(res2.body).toHaveProperty('error');
+
+        // Negative amount
+        const res3 = await request(app)
+            .post('/api/transactions')
+            .send({ type: 'expense', amount: -100, description: 'Отрицательно' });
+        expect(res3.status).toBe(400);
 
         // Empty description
-        const res3 = await request(app)
-            .post('/api/expenses')
-            .send({ amount: 100, description: '' });
-        expect(res3.status).toBe(400);
-        expect(res3.body).toHaveProperty('error');
+        const res4 = await request(app)
+            .post('/api/transactions')
+            .send({ type: 'expense', amount: 100, description: '' });
+        expect(res4.status).toBe(400);
     });
     // endregion TEST_POST_validation
 
     // region TEST_DELETE [DOMAIN(8): Budget; CONCEPT(8): Delete; TECH(7): supertest]
-    it('DELETE /api/expenses/:id should return 200 with success', async () => {
+    it('DELETE /api/transactions/:id should return 200 with success', async () => {
         const { app } = createTestApp();
-        // First create an expense to delete
         const createRes = await request(app)
-            .post('/api/expenses')
-            .send({ amount: 100.00, description: 'Удалить' });
+            .post('/api/transactions')
+            .send({ type: 'expense', amount: 100.00, description: 'Удалить' });
         expect(createRes.status).toBe(201);
         const id = createRes.body.id;
 
-        // Delete it
-        const deleteRes = await request(app).delete(`/api/expenses/${id}`);
+        const deleteRes = await request(app).delete(`/api/transactions/${id}`);
         expect(deleteRes.status).toBe(200);
         expect(deleteRes.body).toEqual({ success: true });
 
-        // Verify it's gone
-        const getRes = await request(app).get('/api/expenses');
+        const getRes = await request(app).get('/api/transactions');
         expect(getRes.body.length).toBe(0);
     });
     // endregion TEST_DELETE
 
     // region TEST_DELETE_nonexistent [DOMAIN(7): Budget; CONCEPT(7): Delete; TECH(6): supertest]
-    it('DELETE /api/expenses/:id for non-existent id should return 200', async () => {
+    it('DELETE /api/transactions/:id for non-existent id should return 200', async () => {
         const { app } = createTestApp();
-        const res = await request(app).delete('/api/expenses/99999');
+        const res = await request(app).delete('/api/transactions/99999');
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ success: true });
     });
     // endregion TEST_DELETE_nonexistent
 
     // region TEST_GET_after_create [DOMAIN(8): Budget; CONCEPT(8): Integration; TECH(7): supertest]
-    it('GET /api/expenses should return created records', async () => {
+    it('GET /api/transactions should return created records in DESC order', async () => {
         const { app } = createTestApp();
-        await request(app).post('/api/expenses').send({ amount: 100, description: 'Один' });
-        await request(app).post('/api/expenses').send({ amount: 200, description: 'Два' });
+        await request(app).post('/api/transactions').send({ type: 'expense', amount: 100, description: 'Один' });
+        await request(app).post('/api/transactions').send({ type: 'expense', amount: 200, description: 'Два' });
 
-        const res = await request(app).get('/api/expenses');
+        const res = await request(app).get('/api/transactions');
         expect(res.status).toBe(200);
         expect(res.body.length).toBe(2);
-        expect(res.body[0].description).toBe('Два'); // DESC order
+        expect(res.body[0].description).toBe('Два');
     });
     // endregion TEST_GET_after_create
+
+    // region TEST_get_balance [DOMAIN(8): Budget; CONCEPT(8): Read; TECH(7): supertest]
+    it('GET /api/balance should return balance with income and expenses', async () => {
+        const { app } = createTestApp();
+        // Add income: 1000
+        await request(app).post('/api/transactions').send({ type: 'income', amount: 1000, description: 'Зарплата' });
+        // Add expenses: 300 + 200 = 500
+        await request(app).post('/api/transactions').send({ type: 'expense', amount: 300, description: 'Продукты' });
+        await request(app).post('/api/transactions').send({ type: 'expense', amount: 200, description: 'Такси' });
+
+        const res = await request(app).get('/api/balance');
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveProperty('balance');
+        expect(res.body.balance).toBe(500); // 1000 - 300 - 200
+    });
+    // endregion TEST_get_balance
+
+    // region TEST_get_stats [DOMAIN(8): Budget; CONCEPT(8): Read; TECH(7): supertest]
+    it('GET /api/stats should return stats object with period breakdown', async () => {
+        const { app } = createTestApp();
+        await request(app).post('/api/transactions').send({ type: 'expense', amount: 500, description: 'Продукты' });
+
+        const res = await request(app).get('/api/stats');
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveProperty('today');
+        expect(res.body).toHaveProperty('yesterday');
+        expect(res.body).toHaveProperty('this_week');
+        expect(res.body).toHaveProperty('this_month');
+        expect(res.body.today).toBe(500); // только что созданный расход
+    });
+    // endregion TEST_get_stats
 });

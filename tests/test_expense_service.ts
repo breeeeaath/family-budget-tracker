@@ -87,7 +87,7 @@ describe('ExpenseService Unit Tests', () => {
     // region TEST_create_expense [DOMAIN(8): Budget; CONCEPT(9): Create; TECH(7): UnitTest]
     it('should create a new expense and return it with id', () => {
         const { service, logSpy, errorSpy } = createTestEnv();
-        const expense = service.create(500.00, 'Продукты');
+        const expense = service.create('expense', 500.00, 'Продукты');
         expect(expense).toBeDefined();
         expect(expense.id).toBeGreaterThan(0);
         expect(expense.amount).toBe(500.00);
@@ -119,8 +119,8 @@ describe('ExpenseService Unit Tests', () => {
     // region TEST_get_all_with_data [DOMAIN(7): Budget; CONCEPT(7): Read; TECH(6): UnitTest]
     it('should return created expenses in getAll', () => {
         const { service, logSpy, errorSpy } = createTestEnv();
-        service.create(100.00, 'Тест 1');
-        service.create(200.00, 'Тест 2');
+        service.create('expense', 100.00, 'Тест 1');
+        service.create('expense', 200.00, 'Тест 2');
         const expenses = service.getAll();
         expect(expenses.length).toBe(2);
         expect(expenses[0].description).toBe('Тест 2'); // DESC order
@@ -136,7 +136,7 @@ describe('ExpenseService Unit Tests', () => {
     // region TEST_delete_expense [DOMAIN(8): Budget; CONCEPT(8): Delete; TECH(7): UnitTest]
     it('should delete an existing expense and return true', () => {
         const { service, logSpy, errorSpy } = createTestEnv();
-        const expense = service.create(300.00, 'Удалить меня');
+        const expense = service.create('expense', 300.00, 'Удалить меня');
         const result = service.delete(expense.id);
         expect(result).toBe(true);
         const expenses = service.getAll();
@@ -168,9 +168,9 @@ describe('ExpenseService Unit Tests', () => {
     it('should calculate total correctly', () => {
         const { service, logSpy, errorSpy } = createTestEnv();
         expect(service.getTotal()).toBe(0);
-        service.create(100.00, 'A');
-        service.create(250.50, 'B');
-        service.create(49.50, 'C');
+        service.create('expense', 100.00, 'A');
+        service.create('expense', 250.50, 'B');
+        service.create('expense', 49.50, 'C');
         const total = service.getTotal();
         expect(total).toBeCloseTo(400.00, 2);
         extractLDDTrace(
@@ -185,8 +185,8 @@ describe('ExpenseService Unit Tests', () => {
     // region TEST_validation_negative_amount [DOMAIN(9): Budget; CONCEPT(9): Validation; TECH(8): UnitTest]
     it('should throw validation error for negative amount', () => {
         const { service, logSpy, errorSpy } = createTestEnv();
-        expect(() => service.create(-100, 'Ошибка')).toThrow('Validation failed');
-        expect(() => service.create(0, 'Ноль')).toThrow('Validation failed');
+        expect(() => service.create('expense', -100, 'Ошибка')).toThrow('Validation failed');
+        expect(() => service.create('expense', 0, 'Ноль')).toThrow('Validation failed');
         extractLDDTrace(
             logSpy.mock.calls.map(c => String(c[0])),
             errorSpy.mock.calls.map(c => String(c[0]))
@@ -199,8 +199,8 @@ describe('ExpenseService Unit Tests', () => {
     // region TEST_validation_empty_description [DOMAIN(9): Budget; CONCEPT(9): Validation; TECH(8): UnitTest]
     it('should throw validation error for empty description', () => {
         const { service, logSpy, errorSpy } = createTestEnv();
-        expect(() => service.create(100, '')).toThrow('Validation failed');
-        expect(() => service.create(100, '   ')).toThrow('Validation failed');
+        expect(() => service.create('expense', 100, '')).toThrow('Validation failed');
+        expect(() => service.create('expense', 100, '   ')).toThrow('Validation failed');
         extractLDDTrace(
             logSpy.mock.calls.map(c => String(c[0])),
             errorSpy.mock.calls.map(c => String(c[0]))
@@ -217,8 +217,8 @@ describe('ExpenseService Unit Tests', () => {
         expect(service.getAll().length).toBe(0);
         expect(service.getTotal()).toBe(0);
         // Create
-        const e1 = service.create(1000.00, 'Зарплата');
-        const e2 = service.create(350.00, 'Продукты');
+        const e1 = service.create('expense', 1000.00, 'Зарплата');
+        const e2 = service.create('expense', 350.00, 'Продукты');
         expect(service.getAll().length).toBe(2);
         expect(service.getTotal()).toBeCloseTo(1350.00, 2);
         // Delete

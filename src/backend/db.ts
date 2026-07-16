@@ -1,38 +1,44 @@
 // region MODULE_CONTRACT [DOMAIN(8): Budget, ExpenseTracking; CONCEPT(9): DatabaseConnection, SchemaInit; TECH(9): better-sqlite3, SQLite]
 // ## @modulecontract
-// ## @purpose To provide a single, reusable entry point for creating a SQLite database connection with a pre-defined expenses schema, ensuring consistent persistence setup across the application.
-// ## @scope Database connection creation, schema initialization, directory provisioning.
+// ## @purpose To provide a single, reusable entry point for creating a SQLite database connection with an extended schema (categories, transactions, monthly_balance), ensuring consistent persistence setup and automatic data migration from legacy schema.
+// ## @scope Database connection creation, schema initialization, directory provisioning, legacy data migration, default category seeding.
 // ## @input Optional dbPath string — if omitted, defaults to `data/tracker.db` relative to cwd.
-// ## @output An open better-sqlite3 Database instance with the `expenses` table created.
+// ## @output An open better-sqlite3 Database instance with `transactions`, `categories`, and `monthly_balance` tables created and default categories inserted.
 // ## @links [USES_API(9): better-sqlite3; USES_API(6): fs, path]
 // ## @invariants
 // ## - createDb ALWAYS returns a valid, open Database instance.
-// ## - The `expenses` table ALWAYS exists after createDb returns.
+// ## - The `transactions`, `categories`, and `monthly_balance` tables ALWAYS exist after createDb returns.
+// ## - If an old `expenses` table exists, its data is migrated to `transactions` and `expenses` is dropped.
+// ## - 21 default categories are inserted if the `categories` table is empty.
 // ## - If dbPath is provided as ':memory:', no data directory is created.
 // ## @rationale
 // ## Q: Why use a factory function instead of a singleton?
 // ## A: A factory function allows test isolation via ':memory:' databases and avoids module-level state that would persist across tests.
+// ## Q: Why embed default category seeding in the DB module?
+// ## A: Guarantees categories exist for any consumer of the database, including tests, without requiring an external seeding script.
+// ## Q: Why soft-migrate via IF NOT EXISTS + conditional INSERT?
+// ## A: Enables idempotent re-runs; the module can be called multiple times without duplicating data or failing on re-creation.
 // ## @changes
-// ## LAST_CHANGE: [v1.0.0 – Initial creation of database module with schema init]
+// ## LAST_CHANGE: [v2.0.0 – Extended schema: categories, transactions (replaces expenses), monthly_balance, migration, default categories]
 // ## @modulemap
 // ## FUNC 9[Creates and returns configured SQLite Database] => createDb
 // ## @usecases
-// ## - [createDb]: Server (Startup) → createDb → Ready Database
-// ## - [createDb]: Test (Setup) → createDb(':memory:') → Isolated Database
+// ## - [createDb]: Server (Startup) -> createDb -> Ready Database with all tables
+// ## - [createDb]: Test (Setup) -> createDb(':memory:') -> Isolated Database
 function _module_contract(): void {}
 // endregion MODULE_CONTRACT
-// GREP_SUMMARY: database, SQLite, better-sqlite3, expenses, schema, createDb, persistence
-// STRUCTURE: ▶ ┌dbPath:String┐ → ◇ `:memory:`? No → ∑ mkdirSync(dataDir) → ⚡ db.prepare(CREATE TABLE).run() → ⎋ return Database
+// GREP_SUMMARY: database, SQLite, better-sqlite3, transactions, categories, monthly_balance, migration, createDb, persistence, schema
+// STRUCTURE: ▶ ┌dbPath:String┐ → ◇ `:memory:`? No → ∑ mkdirSync(dataDir) → ⚡ CREATE TABLE IF NOT EXISTS categories → ⚡ CREATE TABLE IF NOT EXISTS transactions → ⚡ CREATE TABLE IF NOT EXISTS monthly_balance → ◇ IF old expenses exists → ⚡ INSERT INTO transactions SELECT ... FROM expenses → ⚡ DROP expenses → ◇ IF categories empty → ⚡ INSERT 21 default categories → ⎋ return Database
 
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 
 // region FUNC_createDb [DOMAIN(8): Budget; CONCEPT(9): DatabaseInit; TECH(9): better-sqlite3]
-// ## @purpose To enable any caller (server startup, test fixture) to obtain a ready-to-use SQLite connection with a guaranteed schema, without worrying about directory creation or table existence.
+// ## @purpose To enable any caller (server startup, test fixture) to obtain a ready-to-use SQLite connection with a guaranteed schema, without worrying about directory creation or table existence. Includes automatic migration from legacy expenses table to new transactions schema.
 // ## @uses better-sqlite3, fs, path
 // ## @io [optional string] -> [Database]
-// ## @complexity 5
+// ## @complexity 8
 export function createDb(dbPath?: string): Database {
     // === LOG DRIVEN DEVELOPMENT 2.0 (LDD) INSTRUCTIONS ===
     // 1. STRICT LOG LINE FORMAT:
@@ -62,17 +68,106 @@ export function createDb(dbPath?: string): Database {
     // Enable WAL mode for better concurrent performance
     db.pragma('journal_mode = WAL');
 
-    // Create expenses table if it does not exist
+    // === Create categories table ===
     db.exec(`
-        CREATE TABLE IF NOT EXISTS expenses (
+        CREATE TABLE IF NOT EXISTS categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            icon TEXT DEFAULT '📦',
+            workspace_id TEXT DEFAULT 'family_1',
+            is_active INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+    console.log(`[IMP:7][createDb][SCHEMA] Categories table ensured [IO]`);
+
+    // === Create transactions table (replaces expenses) ===
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL DEFAULT 'expense' CHECK(type IN ('income', 'expense')),
             amount REAL NOT NULL,
             description TEXT NOT NULL,
+            category_id INTEGER REFERENCES categories(id),
             workspace_id TEXT DEFAULT 'family_1',
             date DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
-    console.log(`[IMP:7][createDb][SCHEMA] Expenses table ensured [IO]`);
+    console.log(`[IMP:7][createDb][SCHEMA] Transactions table ensured [IO]`);
+
+    // === Create monthly_balance table ===
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS monthly_balance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            month TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            opening_balance REAL DEFAULT 0,
+            closing_balance REAL DEFAULT 0,
+            workspace_id TEXT DEFAULT 'family_1',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+    console.log(`[IMP:7][createDb][SCHEMA] Monthly_balance table ensured [IO]`);
+
+    // === Migration: copy data from old expenses table if it exists ===
+    const tableCheck = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='expenses'`).get() as { name: string } | undefined;
+    if (tableCheck) {
+        console.log(`[IMP:6][createDb][MIGRATE] Found legacy 'expenses' table, starting migration [FLOW]`);
+        const countBefore = (db.prepare(`SELECT COUNT(*) as cnt FROM transactions`).get() as { cnt: number }).cnt;
+        if (countBefore === 0) {
+            db.exec(`
+                INSERT INTO transactions (type, amount, description, workspace_id, date)
+                SELECT 'expense', amount, description, workspace_id, date FROM expenses
+            `);
+            const migratedCount = (db.prepare(`SELECT COUNT(*) as cnt FROM transactions`).get() as { cnt: number }).cnt;
+            console.log(`[IMP:9][createDb][MIGRATE] Migrated ${migratedCount} records from expenses to transactions [BUSINESS]`);
+        } else {
+            console.log(`[IMP:6][createDb][MIGRATE] Transactions already contain data, skipping migration [FLOW]`);
+        }
+        db.exec(`DROP TABLE expenses`);
+        console.log(`[IMP:7][createDb][MIGRATE] Legacy expenses table dropped [IO]`);
+    } else {
+        console.log(`[IMP:5][createDb][MIGRATE] No legacy expenses table found, skipping migration [FLOW]`);
+    }
+
+    // === Seed default categories if empty ===
+    const catCount = (db.prepare(`SELECT COUNT(*) as cnt FROM categories`).get() as { cnt: number }).cnt;
+    if (catCount === 0) {
+        console.log(`[IMP:6][createDb][SEED] Categories table empty, inserting default categories [FLOW]`);
+        const defaultCategories: Array<{ name: string; icon: string }> = [
+            { name: 'Продукты', icon: '🛒' },
+            { name: 'Кафе и рестораны', icon: '🍽️' },
+            { name: 'Транспорт', icon: '🚌' },
+            { name: 'Автомобиль', icon: '🚗' },
+            { name: 'Дом', icon: '🏠' },
+            { name: 'Коммунальные услуги', icon: '💡' },
+            { name: 'Связь и интернет', icon: '📱' },
+            { name: 'Подписки', icon: '📺' },
+            { name: 'Здоровье', icon: '❤️' },
+            { name: 'Аптека', icon: '💊' },
+            { name: 'Одежда', icon: '👕' },
+            { name: 'Покупки', icon: '🛍️' },
+            { name: 'Развлечения', icon: '🎬' },
+            { name: 'Подарки', icon: '🎁' },
+            { name: 'Путешествия', icon: '✈️' },
+            { name: 'Дети', icon: '👶' },
+            { name: 'Домашние животные', icon: '🐾' },
+            { name: 'Образование', icon: '📚' },
+            { name: 'Кредиты', icon: '💳' },
+            { name: 'Налоги', icon: '📋' },
+            { name: 'Прочее', icon: '📦' }
+        ];
+        const insertCat = db.prepare(`INSERT INTO categories (name, icon, workspace_id) VALUES (?, ?, 'family_1')`);
+        const insertMany = db.transaction((categories: Array<{ name: string; icon: string }>) => {
+            for (const cat of categories) {
+                insertCat.run(cat.name, cat.icon);
+            }
+        });
+        insertMany(defaultCategories);
+        console.log(`[IMP:9][createDb][SEED] Inserted ${defaultCategories.length} default categories [BUSINESS]`);
+    } else {
+        console.log(`[IMP:5][createDb][SEED] Categories table already has ${catCount} entries, skipping seed [FLOW]`);
+    }
 
     console.log(`[IMP:9][createDb][RESULT] Database ready at ${resolvedPath} [BUSINESS]`);
     return db;
