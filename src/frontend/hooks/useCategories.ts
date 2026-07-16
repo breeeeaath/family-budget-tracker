@@ -26,9 +26,9 @@ import {
     type Category
 } from '../storage.js';
 
-// BUG_FIX_CONTEXT: import.meta.env.PROD is replaced by Vite at build time with the literal `true`.
-const IS_PROD: boolean = (import.meta as Record<string, unknown>).env !== undefined &&
-    !!(import.meta as Record<string, Record<string, unknown>>).env.PROD;
+// BUG_FIX_CONTEXT: Hostname-based detection is more reliable than import.meta.env in minified builds.
+const IS_PROD: boolean = typeof window !== 'undefined' &&
+    window.location.hostname.includes('vercel.app');
 
 // region FUNC_useCategories [DOMAIN(8): Budget; CONCEPT(9): CustomHook; TECH(8): React19]
 export function useCategories() {

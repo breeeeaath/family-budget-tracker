@@ -32,10 +32,10 @@ import {
     type Stats
 } from '../storage.js';
 
-// BUG_FIX_CONTEXT: import.meta.env.PROD is replaced by Vite at build time with the literal `true`.
-// No runtime try-catch needed — this is a compile-time constant.
-const IS_PROD: boolean = (import.meta as Record<string, unknown>).env !== undefined &&
-    !!(import.meta as Record<string, Record<string, unknown>>).env.PROD;
+// BUG_FIX_CONTEXT: Checking import.meta.env.PROD was unreliable in minified Vercel builds.
+// Instead, detect Vercel deployment by hostname — this is a runtime check that always works.
+const IS_PROD: boolean = typeof window !== 'undefined' &&
+    window.location.hostname.includes('vercel.app');
 
 // region FUNC_useExpenses [DOMAIN(9): Budget; CONCEPT(9): CustomHook; TECH(8): React19]
 // ## @purpose Unified hook: localStorage in production, fetch API in development.
