@@ -7,3 +7,4 @@ doxygen_output
 pgdata
 caddy_data
 *.pyc
+package-lock.json
