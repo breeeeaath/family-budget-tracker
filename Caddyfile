@@ -1,0 +1,26 @@
+# Wallet PWA — Caddy reverse proxy
+# Автоматический Let's Encrypt при указании реального домена
+
+{$DOMAIN:localhost} {
+    # API -> FastAPI backend
+    handle /auth/* {
+        reverse_proxy backend:8000
+    }
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+
+    # PWA static files
+    handle {
+        root * /srv/frontend
+        try_files {path} /index.html
+        file_server
+    }
+
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        -Server
+    }
+}

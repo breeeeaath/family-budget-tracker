@@ -1,0 +1,13 @@
+fastapi==0.115.6  # Async web framework with auto-OpenAPI — single source of truth for frontend contracts
+uvicorn[standard]==0.34.0  # ASGI server — production-grade, hot reload in dev
+sqlalchemy[asyncio]==2.0.36  # Async ORM with PostgreSQL dialect — decouples SQL from business logic
+asyncpg==0.30.0  # High-performance async PostgreSQL driver — required by SQLAlchemy asyncio
+alembic==1.14.0  # DB migrations — schema versioning without manual SQL
+python-jose[cryptography]==3.3.0  # JWT encoding/decoding — HS256 tokens with encrypted payloads
+bcrypt==4.2.1  # Password hashing — direct bcrypt replaces passlib (passlib 1.7.4 incompatible with bcrypt 5.x)
+pydantic[email]==2.10.3  # Schema validation and DTOs — powers FastAPI's request/response models
+pydantic-settings==2.7.0  # BaseSettings for config management — reads from env vars
+aiosqlite==0.20.0  # Async SQLite driver — used in tests (tmp_path in-memory DB, not PostgreSQL)
+pytest==8.3.4  # Test framework — required for backend test suite
+pytest-asyncio==0.24.0  # Async test support — needed because FastAPI + SQLAlchemy are fully async
+httpx==0.28.1  # HTTP client for testing — FastAPI TestClient alternative for async tests

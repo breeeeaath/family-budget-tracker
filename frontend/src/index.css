@@ -1,0 +1,648 @@
+/* region STYLESHEET [DOMAIN(7): Frontend; CONCEPT(6): PWA UI; TECH(8): CSS3] */
+/* ## @purpose Mobile-first PWA stylesheet with touch-friendly 44px minimum tap targets, system-ui font, max-width 480px layout. */
+/* GREP_SUMMARY: mobile-first, max-width 480px, system-ui, touch-friendly, min-height 44px, bottom tab bar, balance card, pie chart */
+/* STRUCTURE: ▶ :root(vars) → body(480px center, system-ui) → layout(bottom tab bar) → components(balance-card, transaction-item, category-picker-grid) → pages(login, dashboard, history, add, profile) */
+
+:root {
+  --color-bg: #f5f6fa;
+  --color-surface: #ffffff;
+  --color-text: #1a1a2e;
+  --color-text-secondary: #6b7280;
+  --color-income: #22c55e;
+  --color-expense: #ef4444;
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-border: #e5e7eb;
+  --color-balance-positive: #22c55e;
+  --color-balance-negative: #ef4444;
+  --radius: 12px;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  display: flex;
+  justify-content: center;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 100%;
+  max-width: 480px;
+  background: var(--color-bg);
+  min-height: 100dvh;
+}
+
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.app-content {
+  flex: 1;
+  padding: 16px 16px 80px;
+  overflow-y: auto;
+}
+
+/* --- Bottom Tab Bar --- */
+
+.bottom-tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  padding: 8px 0 env(safe-area-inset-bottom, 8px);
+  z-index: 100;
+}
+
+.bottom-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  transition: color 0.15s;
+}
+
+.bottom-tab--active {
+  color: var(--color-primary);
+}
+
+.bottom-tab__icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.bottom-tab__label {
+  margin-top: 2px;
+}
+
+/* --- BalanceCard --- */
+
+.balance-card {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+}
+
+.balance-card--positive .balance-card__amount {
+  color: var(--color-balance-positive);
+}
+
+.balance-card--negative .balance-card__amount {
+  color: var(--color-balance-negative);
+}
+
+.balance-card__main {
+  margin-bottom: 16px;
+}
+
+.balance-card__label {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+}
+
+.balance-card__amount {
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.balance-card__minis {
+  display: flex;
+  gap: 8px;
+}
+
+.balance-card__mini {
+  flex: 1;
+  background: var(--color-bg);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+
+.balance-card__mini-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+}
+
+.balance-card__mini-value {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.balance-card__mini-value--expense {
+  color: var(--color-expense);
+}
+
+.balance-card__mini-value--income {
+  color: var(--color-income);
+}
+
+/* --- CategoryPicker --- */
+
+.category-picker-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.category-picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  min-height: 60px;
+  padding: 8px;
+  border: 2px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  cursor: pointer;
+  font-size: 12px;
+  transition: border-color 0.15s, transform 0.1s;
+}
+
+.category-picker-item--selected {
+  transform: scale(1.05);
+  background: color-mix(in srgb, var(--cat-color, #4f46e5) 10%, white);
+}
+
+.category-picker-icon {
+  font-size: 22px;
+  margin-bottom: 2px;
+}
+
+.category-picker-name {
+  text-align: center;
+  line-height: 1.2;
+  color: var(--color-text);
+}
+
+/* --- TransactionItem --- */
+
+.transaction-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  box-shadow: var(--shadow);
+  min-height: 44px;
+}
+
+.transaction-item__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.transaction-item__icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.transaction-item__info {
+  min-width: 0;
+}
+
+.transaction-item__category {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.transaction-item__note {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transaction-item__date {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.transaction-item__amount {
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.transaction-item__amount--income {
+  color: var(--color-income);
+}
+
+.transaction-item__amount--expense {
+  color: var(--color-expense);
+}
+
+/* --- Login Page --- */
+
+.login-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 24px;
+}
+
+.login-page__title {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--color-primary);
+  margin-bottom: 32px;
+}
+
+.login-tabs {
+  display: flex;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: 4px;
+  margin-bottom: 24px;
+  width: 100%;
+  box-shadow: var(--shadow);
+}
+
+.login-tab {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.login-tab--active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.login-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-form__label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.login-form__input {
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 16px;
+  min-height: 44px;
+  background: var(--color-surface);
+  font-family: inherit;
+}
+
+.login-form__error {
+  background: #fef2f2;
+  color: var(--color-expense);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.login-form__submit {
+  padding: 16px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 44px;
+  transition: background 0.15s;
+}
+
+.login-form__submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* --- Dashboard --- */
+
+.dashboard-page__title {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.dashboard-chart-section {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+}
+
+.dashboard-chart-section__title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+/* --- FAB --- */
+
+.fab {
+  position: fixed;
+  bottom: 80px;
+  right: calc(50% - (480px / 2) + 16px);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.fab:active {
+  transform: scale(0.95);
+}
+
+/* --- Add Transaction Page --- */
+
+.add-transaction-page__title {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.type-toggle {
+  display: flex;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: 4px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+}
+
+.type-toggle__btn {
+  flex: 1;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.type-toggle__btn--income {
+  background: var(--color-income);
+  color: #fff;
+}
+
+.type-toggle__btn--expense {
+  background: var(--color-expense);
+  color: #fff;
+}
+
+.add-transaction-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.add-transaction-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.add-transaction-form__label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.add-transaction-form__input {
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 18px;
+  min-height: 44px;
+  background: var(--color-surface);
+  font-family: inherit;
+}
+
+.add-transaction-form__textarea {
+  padding: 12px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 15px;
+  min-height: 44px;
+  background: var(--color-surface);
+  font-family: inherit;
+  resize: vertical;
+}
+
+.add-transaction-form__submit {
+  padding: 16px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 44px;
+  transition: background 0.15s;
+}
+
+.add-transaction-form__submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* --- History Page --- */
+
+.history-page__title {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.history-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.history-filters__select {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 13px;
+  min-height: 44px;
+  background: var(--color-surface);
+  font-family: inherit;
+  color: var(--color-text);
+}
+
+.history-filters__date {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 13px;
+  min-height: 44px;
+  background: var(--color-surface);
+  font-family: inherit;
+  color: var(--color-text);
+}
+
+.history-page__load-more {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+  margin-top: 8px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.history-page__load-more:disabled {
+  opacity: 0.5;
+}
+
+.history-page__empty,
+.history-page__loading {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--color-text-secondary);
+}
+
+/* --- Profile Page --- */
+
+.profile-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 24px;
+}
+
+.profile-page__title {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 24px;
+  align-self: flex-start;
+}
+
+.profile-page__info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: 32px 24px;
+  box-shadow: var(--shadow);
+  width: 100%;
+}
+
+.profile-page__avatar {
+  font-size: 64px;
+  margin-bottom: 12px;
+}
+
+.profile-page__name {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.profile-page__id {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.profile-page__logout {
+  margin-top: 24px;
+  padding: 14px 32px;
+  border: 1px solid var(--color-expense);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-expense);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+  transition: background 0.15s;
+}
+
+.profile-page__loading,
+.profile-page__empty {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--color-text-secondary);
+}

@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+__pycache__
+.pytest_cache
+doxygen_output
+pgdata
+caddy_data
+*.pyc
