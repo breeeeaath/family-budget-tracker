@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # region CLASS_Settings [DOMAIN(8): FinanceTracker; CONCEPT(7): Configuration; TECH(9): PydanticSettings]
 ## @purpose Encapsulate every runtime‑resolved configuration value so all modules consume a single, validated settings instance.
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql+asyncpg://wallet:wallet@localhost:5432/wallet"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./wallet.db"  # PostgreSQL in Docker: postgresql+asyncpg://wallet:wallet@db:5432/wallet
     SECRET_KEY: str = "dev-secret-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_DAYS: int = 30
